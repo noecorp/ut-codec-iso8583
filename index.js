@@ -3,6 +3,23 @@ var merge = require('lodash.merge');
 var defaultFields = require('./fields');
 var bitSyntax = require('ut-bitsyntax');
 var emv = require('ut-emv');
+var cptable = require('./ebcdic.js');
+
+var decodeField = function(buffer) {
+    var result = '';
+    for (var ii = 0, buffLen = buffer.length; ii < buffLen; ii = ii + 1) {
+        result += String.fromCharCode(cptable.ebcdicDec2asciiDec[buffer[ii]]);
+    }
+    return Buffer.from(result);
+};
+function convertFromEBCDIC(b) {
+    let b1 = b.slice(0, 4);
+    let b2 = b.slice(4, 20);
+    let b3 = b.slice(20, b.length);
+    let b11 = decodeField(b1);
+    let b13 = decodeField(b3);
+    return Buffer.concat([b11, b2, b13]);
+}
 
 function getFormat(format, fallback) {
     return (format && {'numeric': 'string-left-zero', 'string': 'string-right-space', 'amount': 'string-left-zero', 'bcdamount': 'string'}[format]) || format || fallback || 'binary';
@@ -74,6 +91,9 @@ Iso8583.prototype.decode = function(buffer, $meta) {
     var internalError = false;
     var message = {};
     try {
+		if (buffer[0] === 240 && buffer[1] === 248) { // mti: 0800 EBCDIC
+			buffer = convertFromEBCDIC(buffer);
+		}
         var frame = this.framePattern(buffer);
         var bitmapField = 0;
         if (frame) {
@@ -192,17 +212,19 @@ Iso8583.prototype.encode = function(message, $meta, context) {
     /* jshint bitwise: false */
     var buffers = new Array(64 * this.fieldPatterns.length);
     var emptyBuffer = new Buffer([]);
-    if (message[11]) {
-        message[11] = `${'0'.repeat(this.fieldFormat[11].size)}${message[11]}`.slice(-this.fieldFormat[11].size);
-    } else {
-        context.trace = context.trace || 0;
-        message[11] = `${'0'.repeat(this.fieldFormat[11].size)}${context.trace}`.slice(-this.fieldFormat[11].size);
-        context.trace++;
-        if (context.trace >= Math.pow(10, this.fieldFormat[11].size)) {
-            context.trace = 0;
-        }
-    }
-    $meta.trace = `${(message.mtid || '00').substr(0, 2)}${message[11]}`;
+	if ($meta && context) {
+		if (message[11]) {
+			message[11] = `${'0'.repeat(this.fieldFormat[11].size)}${message[11]}`.slice(-this.fieldFormat[11].size);
+		} else {
+			context.trace = context.trace || 0;
+			message[11] = `${'0'.repeat(this.fieldFormat[11].size)}${context.trace}`.slice(-this.fieldFormat[11].size);
+			context.trace++;
+			if (context.trace >= Math.pow(10, this.fieldFormat[11].size)) {
+				context.trace = 0;
+			}
+		}
+		$meta.trace = `${(message.mtid || '00').substr(0, 2)}${message[11]}`;
+	}
     if (message.emvTags) {
         message[this.emvTagsField] = emv.tagsEncode(message.emvTags);
     }

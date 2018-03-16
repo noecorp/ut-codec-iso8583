@@ -72,7 +72,7 @@
         "82": "Count exceeds limit",
         "83": "Reserved for private use",
         "84": "Time limit for pre-authorization reached",
-        "85": "Reserved for private use",
+        "85": "Not Declined",
         "86": "Cannot verify PIN",
         "87": "Check already posted",
         "88": "Information not on file",
